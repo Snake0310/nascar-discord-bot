@@ -1,0 +1,48 @@
+name: NASCAR Cup Discord Updates
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_message:
+        description: "Send a test Discord notification only"
+        type: boolean
+        required: false
+        default: true
+  schedule:
+    # Twice each hour, best effort; cron is UTC.
+    - cron: '17,47 * * * *'
+
+permissions:
+  contents: write  # Save a small file so results are not posted twice.
+
+concurrency:
+  group: nascar-discord-updates
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check NASCAR updates
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TEST_MESSAGE: ${{ inputs.test_message || 'false' }}
+        run: python nascar_discord.py
+      - name: Save notification state (even after a partial failure)
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain -- bot_state.json)" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add bot_state.json
+            git commit -m 'Update NASCAR notification history [skip ci]'
+            git push
+          fi
